@@ -281,12 +281,12 @@ document.getElementById('btn-quiz').addEventListener('click', () => performActio
 submitQuizBtn.addEventListener('click', () => {
     const ans = quizAnswerInput.value.trim().toUpperCase();
     if (ans === quizCorrectLetter) {
-        quizFeedback.textContent = "✅ Correct!";
+        quizFeedback.textContent = "Correct!";
         quizFeedback.className = "text-green-600 font-bold mt-2";
         addXP(15);
         trackTopic(currentTopic, true);
     } else {
-        quizFeedback.textContent = "❌ Incorrect. The correct answer was " + quizCorrectLetter;
+        quizFeedback.textContent = "Incorrect. The correct answer was " + quizCorrectLetter;
         quizFeedback.className = "text-red-500 font-bold mt-2";
         trackTopic(currentTopic, false);
     }
