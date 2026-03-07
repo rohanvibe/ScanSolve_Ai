@@ -1,0 +1,16 @@
+{
+    "name": "scansolve",
+    "version": "1.0.0",
+    "description": "AI-Powered Homework Solver deployed on Vercel",
+    "main": "api/solve.js",
+    "scripts": {
+        "start": "node server.js",
+        "dev": "vercel dev"
+    },
+    "dependencies": {
+        "@google/genai": "^1.44.0",
+        "cors": "^2.8.6",
+        "dotenv": "^16.6.1",
+        "express": "^4.22.1"
+    }
+}
