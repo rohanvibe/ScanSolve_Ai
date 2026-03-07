@@ -1,6 +1,7 @@
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
 const cameraPlaceholder = document.getElementById('camera-placeholder');
+const targetOverlay = document.getElementById('target-overlay');
 const cameraBtn = document.getElementById('camera-btn');
 const captureBtn = document.getElementById('capture-btn');
 const loadingIndicator = document.getElementById('loading-indicator');
@@ -10,10 +11,8 @@ const resultContent = document.getElementById('result-content');
 let stream = null;
 let isCameraOpen = false;
 
-// Format the AI text for better readability (bold titles etc)
 function formatResult(text) {
     let formattedText = text;
-    // Replace markdown stars with bold tags if they happen to appear
     formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     return formattedText;
 }
@@ -21,15 +20,14 @@ function formatResult(text) {
 cameraBtn.addEventListener('click', async () => {
     if (!isCameraOpen) {
         try {
-            // Request environment camera for mobile by default
             stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'environment' }
+                video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
             });
             video.srcObject = stream;
 
-            // Update UI
             video.classList.remove('hidden');
             cameraPlaceholder.classList.add('hidden');
+            targetOverlay.classList.remove('hidden');
             captureBtn.classList.remove('hidden');
 
             cameraBtn.textContent = 'Close Camera';
@@ -37,22 +35,23 @@ cameraBtn.addEventListener('click', async () => {
             cameraBtn.classList.replace('hover:bg-gray-900', 'hover:bg-red-600');
             isCameraOpen = true;
 
-            // Hide previous results when opening camera
             resultCard.classList.add('hidden');
+
+            // Play video normally if it was paused
+            video.play();
 
         } catch (err) {
             console.error("Error accessing camera:", err);
             alert("Could not access camera. Please make sure you have given permissions.");
         }
     } else {
-        // Stop stream
         if (stream) {
             stream.getTracks().forEach(track => track.stop());
         }
 
-        // Update UI
         video.classList.add('hidden');
         cameraPlaceholder.classList.remove('hidden');
+        targetOverlay.classList.add('hidden');
         captureBtn.classList.add('hidden');
 
         cameraBtn.textContent = 'Open Camera';
@@ -63,21 +62,41 @@ cameraBtn.addEventListener('click', async () => {
 });
 
 captureBtn.addEventListener('click', async () => {
-    // Take a snapshot
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+    // 1. Instantly pause video so user can move camera away immediately
+    video.pause();
 
-    // Convert canvas image to base64
-    const base64Image = canvas.toDataURL('image/jpeg', 0.8);
+    // 2. Calculate cropping dimensions (80% width, 50% height, centered)
+    const videoWidth = video.videoWidth;
+    const videoHeight = video.videoHeight;
 
-    // UI states: disable button, show loading
+    const cropWidth = videoWidth * 0.8;
+    const cropHeight = videoHeight * 0.5;
+    const cropX = (videoWidth - cropWidth) / 2;
+    const cropY = (videoHeight - cropHeight) / 2;
+
+    // Set canvas to cropped dimensions keeping it reasonable (e.g., max width 1000px)
+    const scale = Math.min(1000 / cropWidth, 1);
+    canvas.width = cropWidth * scale;
+    canvas.height = cropHeight * scale;
+
+    const ctx = canvas.getContext('2d');
+
+    // Draw only the cropped portion, scaling it down if necessary
+    ctx.drawImage(
+        video,
+        cropX, cropY, cropWidth, cropHeight, // Source coords
+        0, 0, canvas.width, canvas.height // Dest coords
+    );
+
+    // Compress to JPEG with medium quality
+    const base64Image = canvas.toDataURL('image/jpeg', 0.6);
+
     captureBtn.disabled = true;
     captureBtn.classList.add('opacity-50', 'cursor-not-allowed');
     loadingIndicator.classList.remove('hidden');
     loadingIndicator.classList.add('flex');
     resultCard.classList.add('hidden');
-    resultContent.innerHTML = ''; // reset previous
+    resultContent.innerHTML = '';
 
     try {
         const response = await fetch('/api/solve', {
@@ -94,21 +113,8 @@ captureBtn.addEventListener('click', async () => {
             throw new Error(data.error || 'Server returned an error');
         }
 
-        // Populate result
         resultContent.innerHTML = formatResult(data.result);
         resultCard.classList.remove('hidden');
-
-        // Optionally close camera after successful capture
-        if (stream) {
-            stream.getTracks().forEach(track => track.stop());
-        }
-        video.classList.add('hidden');
-        cameraPlaceholder.classList.remove('hidden');
-        captureBtn.classList.add('hidden');
-        cameraBtn.textContent = 'Open Camera';
-        cameraBtn.classList.replace('bg-red-500', 'bg-gray-800');
-        cameraBtn.classList.replace('hover:bg-red-600', 'hover:bg-gray-900');
-        isCameraOpen = false;
 
     } catch (error) {
         console.error("Error solving problem:", error);
@@ -118,5 +124,8 @@ captureBtn.addEventListener('click', async () => {
         captureBtn.classList.remove('opacity-50', 'cursor-not-allowed');
         loadingIndicator.classList.add('hidden');
         loadingIndicator.classList.remove('flex');
+
+        // After loading finishes, we could either automatically close camera or let them keep looking at the paused frame.
+        // It's requested they don't have to hold it, and pause() resolves that.
     }
 });
