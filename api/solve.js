@@ -1,68 +1,54 @@
-const crypto = require('crypto');
 const { GoogleGenAI } = require('@google/genai');
 
-const resultsCache = new Map();
-
-function getHash(base64Data) {
-  return crypto.createHash('sha256').update(base64Data).digest('hex');
-}
-
-const rateLimitMap = new Map();
-
-function checkRateLimit(ip) {
-  const now = Date.now();
-  const MINUTE = 60 * 1000;
-  const HOUR = 60 * 60 * 1000;
-  const DAY = 24 * 60 * 60 * 1000;
-
-  if (!rateLimitMap.has(ip)) {
-    rateLimitMap.set(ip, []);
-  }
-
-  const timestamps = rateLimitMap.get(ip);
-  const validTimestamps = timestamps.filter(t => now - t < DAY);
-
-  const scansLastMinute = validTimestamps.filter(t => now - t < MINUTE).length;
-  const scansLastHour = validTimestamps.filter(t => now - t < HOUR).length;
-  const scansLastDay = validTimestamps.length;
-
-  if (scansLastMinute >= 2) return { allowed: false, error: 'Limit reached: Maximum 2 scans per minute.' };
-  if (scansLastHour >= 8) return { allowed: false, error: 'Limit reached: Maximum 8 scans per hour.' };
-  if (scansLastDay >= 30) return { allowed: false, error: 'Limit reached: Maximum 30 scans per day.' };
-
-  validTimestamps.push(now);
-  rateLimitMap.set(ip, validTimestamps);
-  return { allowed: true };
-}
-
 module.exports = async function handler(req, res) {
-  const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown-ip';
-  const limit = checkRateLimit(ip);
-  if (!limit.allowed) {
-    return res.status(429).json({ error: limit.error });
-  }
-  // Allow CORS if needed, or simply handle POST
+  // Allow CORS if needed
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    const { image } = req.body;
+    const { image, teacherMode, multiple } = req.body;
     if (!image) {
       return res.status(400).json({ error: 'No image provided' });
     }
 
-    // Initialize Gemini SDK with apiKey from Environment Variable
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    let prompt = "";
 
-    const prompt = `You are solver and explainer for a person
+    if (multiple) {
+      prompt = `Identify all questions in this image and solve them.
+Also detect the main Subject and Topic for the entire image.
+Format your response exactly like this:
+Subject: [Subject]
+Topic: [Topic]
 
-1. Read the question from the image.
+Q1: ...
+Answer: ...
+
+Q2: ...
+Answer: ...`;
+    } else if (teacherMode) {
+      prompt = `Read the question from the image. Detect the Subject and Topic.
+You are a teacher guiding a student. Do not reveal the final answer immediately. Ask the student questions and guide them step by step.
+
+Format your response exactly like this:
+Subject: [Subject]
+Topic: [Topic]
+
+Teacher Guidance:
+...`;
+    } else {
+      prompt = `Read the question from the image. Detect the subject and topic.
+Possible subjects: Math, Physics, Chemistry, English, General knowledge.
+
+1. Read the question.
 2. Solve it step by step.
 3. Show the final answer.
 4. Explain the concept simply.
 
 Format your response exactly like this:
+Subject: [Subject]
+Topic: [Topic]
 
 Question:
 ...
@@ -77,15 +63,9 @@ Final Answer:
 
 Simple Explanation:
 ...`;
-
-    // Remove the data URL prefix if present
-    const base64Data = image.replace(/^data:image\/\w+;base64,/, "");
-
-    const imageHash = getHash(base64Data);
-    if (resultsCache.has(imageHash)) {
-      console.log("Serving result from cache!");
-      return res.status(200).json({ result: resultsCache.get(imageHash) });
     }
+
+    const base64Data = image.replace(/^data:image\/\w+;base64,/, "");
 
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
@@ -100,18 +80,26 @@ Simple Explanation:
       ]
     });
 
-    const resultText = response.text;
-    resultsCache.set(imageHash, resultText);
+    const text = response.text;
 
-    // Size limit for cache
-    if (resultsCache.size > 1000) {
-      const firstKey = resultsCache.keys().next().value;
-      resultsCache.delete(firstKey);
-    }
+    // Parse Subject and Topic out of the response if possible
+    let subject = "Unknown Subject";
+    let topic = "General topic";
+    let cleanText = text;
 
-    res.status(200).json({ result: resultText });
+    const subjectMatch = text.match(/Subject:\s*(.+)/i);
+    const topicMatch = text.match(/Topic:\s*(.+)/i);
+
+    if (subjectMatch) subject = subjectMatch[1].trim();
+    if (topicMatch) topic = topicMatch[1].trim();
+
+    // clean up the Subject/Topic lines from the output text so the UI can format it nicely
+    cleanText = cleanText.replace(/Subject:\s*.+\n?/i, '');
+    cleanText = cleanText.replace(/Topic:\s*.+\n?/i, '');
+
+    res.status(200).json({ result: cleanText.trim(), subject, topic });
   } catch (error) {
-    console.error("Error communicating with Gemini:", error);
+    console.error("Error communicating with Gemini (Solve):", error);
     res.status(500).json({ error: 'Failed to process the image' });
   }
 };

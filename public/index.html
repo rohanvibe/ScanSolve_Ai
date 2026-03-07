@@ -4,14 +4,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ScanSolve</title>
+    <title>ScanSolve - Advanced Math Assistant</title>
+    <!-- PWA Meta Tags -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#2563eb">
+    <link rel="apple-touch-icon" href="/icon-192.png">
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .loader {
             border: 4px solid #f3f3f3;
             border-top: 4px solid #3b82f6;
-            /* Blue-500 */
             border-radius: 50%;
             width: 40px;
             height: 40px;
@@ -27,27 +30,57 @@
                 transform: rotate(360deg);
             }
         }
+
+        .xp-bar {
+            transition: width 0.5s ease-in-out;
+        }
     </style>
 </head>
 
-<body class="bg-gray-50 min-h-screen text-gray-800 font-sans">
-    <div class="max-w-md mx-auto p-4 flex flex-col items-center">
-        <!-- Top section -->
-        <header class="w-full text-center py-6 mb-2">
+<body class="bg-gray-50 min-h-screen text-gray-800 font-sans pb-12">
+    <div class="max-w-xl mx-auto p-4 flex flex-col items-center">
+        <!-- Top Stats Bar -->
+        <div
+            class="w-full flex justify-between items-center bg-white p-3 rounded-xl shadow-sm border border-gray-200 mb-4">
+            <div class="flex items-center gap-2">
+                <div class="bg-yellow-100 text-yellow-600 p-2 rounded-lg font-bold">
+                    <span id="level-display">Lvl 1</span>
+                </div>
+                <div class="w-24 h-3 bg-gray-200 rounded-full overflow-hidden">
+                    <div id="xp-fill" class="h-full bg-yellow-400 xp-bar" style="width: 0%;"></div>
+                </div>
+                <span id="xp-text" class="text-xs font-semibold text-gray-600">0 XP</span>
+            </div>
+            <div class="text-sm font-semibold text-blue-600" id="streak-display">🔥 1 Day Streak</div>
+        </div>
+
+        <!-- Header -->
+        <header class="w-full text-center py-2 mb-4">
             <h1 class="text-4xl font-extrabold text-blue-600 tracking-tight">ScanSolve</h1>
-            <p class="text-gray-500 mt-2 text-sm font-medium">AI-Powered Math & Homework Assistant</p>
+            <p class="text-gray-500 mt-1 text-sm font-medium">Capture & Learn</p>
         </header>
 
-        <!-- Middle: Camera preview box -->
+        <!-- Togglers -->
+        <div class="w-full flex justify-between gap-2 mb-4">
+            <label class="flex items-center gap-2 text-sm font-semibold cursor-pointer">
+                <input type="checkbox" id="teacher-mode-toggle" class="w-4 h-4 text-blue-600 rounded">
+                Teacher Mode 👨‍🏫
+            </label>
+            <label class="flex items-center gap-2 text-sm font-semibold cursor-pointer">
+                <input type="checkbox" id="multiple-questions-toggle" class="w-4 h-4 text-blue-600 rounded">
+                Multi-Question / Page 📄
+            </label>
+        </div>
+
+        <!-- Camera box -->
         <div class="w-full bg-white rounded-2xl shadow-md border border-gray-200 overflow-hidden relative"
             style="height: 320px;">
             <video id="video" class="w-full h-full object-cover hidden" autoplay playsinline></video>
             <canvas id="canvas" class="hidden"></canvas>
 
-            <!-- Targeting Overlay (cropping boundary) -->
             <div id="target-overlay" class="absolute inset-0 hidden pointer-events-none">
                 <div class="absolute inset-0 bg-black bg-opacity-40"></div>
-                <div
+                <div id="crop-box"
                     class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-4/5 h-1/2 border-2 border-dashed border-blue-400 rounded-lg shadow-[0_0_0_9999px_rgba(0,0,0,0.4)] bg-transparent z-10 box-border">
                     <span
                         class="absolute -top-6 left-1/2 transform -translate-x-1/2 text-white text-xs font-semibold whitespace-nowrap drop-shadow-md">Place
@@ -57,45 +90,117 @@
 
             <div id="camera-placeholder"
                 class="absolute inset-0 flex flex-col items-center justify-center text-gray-400 bg-gray-100 z-20">
-                <svg class="w-16 h-16 mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                    xmlns="http://www.w3.org/2000/svg">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z">
-                    </path>
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                </svg>
                 <span class="text-sm font-semibold">Camera is off</span>
             </div>
         </div>
 
-        <!-- Buttons -->
-        <div class="w-full flex gap-3 mt-6">
+        <div class="w-full flex gap-3 mt-4">
             <button id="camera-btn"
-                class="flex-1 bg-gray-800 hover:bg-gray-900 text-white font-semibold py-3 px-4 rounded-xl shadow transition duration-200 flex items-center justify-center">
-                Open Camera
-            </button>
+                class="flex-1 bg-gray-800 hover:bg-gray-900 text-white font-semibold py-3 px-4 rounded-xl shadow transition duration-200 flex items-center justify-center">Open
+                Camera</button>
             <button id="capture-btn"
-                class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-xl shadow transition duration-200 hidden flex items-center justify-center">
-                Capture & Solve
-            </button>
+                class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-xl shadow transition duration-200 hidden flex items-center justify-center">Capture
+                & Solve</button>
         </div>
 
-        <!-- Loading -->
-        <div id="loading-indicator" class="hidden flex-col items-center justify-center mt-8 gap-y-4">
+        <div id="loading-indicator" class="hidden flex-col items-center justify-center mt-6 gap-y-4">
             <div class="loader"></div>
-            <p class="text-blue-600 font-semibold animate-pulse">Analyzing question...</p>
+            <p class="text-blue-600 font-semibold animate-pulse">Running AI Engine...</p>
         </div>
 
-        <!-- Bottom section: Result card -->
-        <div id="result-card" class="w-full bg-white rounded-2xl shadow-md border border-gray-200 mt-8 p-6 hidden mb-8">
-            <h2 class="text-xl font-bold border-b pb-3 mb-4 text-gray-900">Solution</h2>
-            <div id="result-content" class="text-sm whitespace-pre-wrap leading-relaxed text-gray-700 space-y-2"></div>
+        <!-- Main Solution Area -->
+        <div id="result-card" class="w-full bg-white rounded-2xl shadow-md border border-gray-200 mt-6 p-6 hidden">
+            <div class="flex justify-between items-center border-b pb-3 mb-4">
+                <h2 class="text-xl font-bold text-gray-900">Solution</h2>
+                <span id="subject-badge"
+                    class="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded">Math</span>
+            </div>
+            <p id="topic-display" class="text-xs text-gray-500 mb-2 font-mono">Topic: Unknown</p>
+            <div id="result-content"
+                class="text-sm border p-3 rounded-lg bg-gray-50 whitespace-pre-wrap leading-relaxed text-gray-700 min-h-[100px]">
+            </div>
+
+            <!-- Alternative Explanations -->
+            <div class="mt-4 grid grid-cols-2 gap-2">
+                <button
+                    class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold py-2 px-3 rounded action-explain"
+                    data-mode="Explain Simpler">Simpler</button>
+                <button
+                    class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold py-2 px-3 rounded action-explain"
+                    data-mode="Explain With Example">With Example</button>
+                <button
+                    class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold py-2 px-3 rounded action-explain"
+                    data-mode="Explain Like Story">Like Story</button>
+                <button
+                    class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold py-2 px-3 rounded action-explain"
+                    data-mode="Explain In 3 Lines">In 3 Lines</button>
+                <button
+                    class="bg-purple-100 hover:bg-purple-200 text-purple-700 text-xs font-semibold py-2 px-3 rounded action-explain"
+                    data-mode="School Method">School Method</button>
+                <button
+                    class="bg-pink-100 hover:bg-pink-200 text-pink-700 text-xs font-semibold py-2 px-3 rounded action-explain"
+                    data-mode="Shortcut Method">Shortcut</button>
+            </div>
+
+            <!-- Generate Practice & Quiz Buttons -->
+            <div class="mt-4 flex gap-2">
+                <button id="btn-practice"
+                    class="flex-1 bg-green-500 hover:bg-green-600 text-white font-semibold py-2 rounded text-sm">Practice
+                    Similar</button>
+                <button id="btn-quiz"
+                    class="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2 rounded text-sm">Take
+                    Quiz</button>
+            </div>
+        </div>
+
+        <!-- Action Result Section (For explains, practice, quiz) -->
+        <div id="action-card" class="w-full bg-white rounded-2xl shadow-md border border-gray-200 mt-4 p-5 hidden">
+            <h3 id="action-title" class="font-bold text-lg mb-2 text-gray-800">Result</h3>
+            <div id="action-content" class="text-sm whitespace-pre-wrap leading-relaxed text-gray-700"></div>
+
+            <!-- Quiz interactive area -->
+            <div id="quiz-interactive" class="hidden mt-4 flex flex-col gap-2">
+                <input type="text" id="quiz-answer" placeholder="Type answer letter (A, B, C...)"
+                    class="border p-2 rounded text-sm w-full">
+                <button id="submit-quiz-btn" class="bg-blue-600 text-white py-2 rounded text-sm font-bold">Submit
+                    Answer</button>
+                <p id="quiz-feedback" class="text-sm font-bold mt-2"></p>
+            </div>
+        </div>
+
+        <!-- Tutor Chat -->
+        <div id="chat-card"
+            class="w-full bg-white rounded-2xl shadow-md border border-gray-200 mt-4 p-5 hidden flex-col">
+            <h3 class="font-bold text-lg mb-2 text-gray-800">AI Tutor Chat</h3>
+            <div id="chat-window"
+                class="h-40 overflow-y-auto mb-3 bg-gray-50 border p-2 rounded text-sm flex flex-col gap-2"></div>
+            <div class="flex gap-2">
+                <input type="text" id="chat-input" placeholder="Ask a follow up..."
+                    class="border p-2 w-full rounded text-sm">
+                <button id="chat-send" class="bg-blue-600 text-white px-4 rounded text-sm font-bold">Send</button>
+            </div>
+        </div>
+
+        <!-- Dashboard (Weak Areas) -->
+        <div class="w-full bg-white rounded-2xl shadow-md border border-gray-200 mt-8 p-6">
+            <h2 class="text-xl font-bold border-b pb-3 mb-4 text-gray-900">Your Weak Areas Dashboard</h2>
+            <ul id="weak-areas-list" class="text-sm text-gray-700 space-y-2">
+                <li class="text-gray-400 italic">Solve problems to track topics.</li>
+            </ul>
         </div>
     </div>
 
     <!-- Script -->
     <script src="script.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(reg => console.log('Service Worker registered', reg))
+                    .catch(err => console.error('Service Worker registration failed', err));
+            });
+        }
+    </script>
 </body>
 
 </html>
